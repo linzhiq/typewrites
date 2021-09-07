@@ -13,6 +13,6 @@
   "scripts": {
     "build": "tsc -p .",
     "start": "node ./dist/index.js",
-    "gcp-build": "npm run build"
+    "postinstall": "yarn build"
   }
 }
