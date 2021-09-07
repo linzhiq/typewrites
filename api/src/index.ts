@@ -1,18 +1,14 @@
-import express from "express";
-import path from "path";
+import { createServer } from "http";
+import { Server, Socket } from "socket.io";
 
-const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-process.env.NODE_ENV === "development" &&
-  app.use(express.static(path.join(__dirname, "../web/dist")));
-
-app.get("/", (req, res) => {
-  const name = process.env.NAME || "World";
-  res.send(`Hello ${name}!`);
+const httpServer = createServer();
+const io = new Server(httpServer, {
+  cors: {
+    origin: ["http://localhost:3000", "https://typewriter.ooo"],
+  },
 });
+
+io.on("connection", (socket: Socket) => {});
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`Server running on PORT ${PORT}`);
-});
+httpServer.listen(PORT);
