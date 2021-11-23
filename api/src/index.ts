@@ -8,7 +8,16 @@ const io = new Server(httpServer, {
   },
 });
 
-io.on("connection", (socket: Socket) => {});
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
+
+io.on("connection", async (socket: Socket) => {
+  const lines = await prisma.line.findMany({
+    where: { docId: 1 },
+  });
+
+  socket.emit("lines", lines);
+});
 
 const PORT = process.env.PORT || 8080;
 httpServer.listen(PORT);
