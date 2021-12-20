@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { updateDoc, doc, onSnapshot, arrayUnion } from "firebase/firestore";
 
 import { db } from "../firebase";
 import { CursorsForCell, registerSetCursorDispatch } from "../cursors";
 
-// use string instead of array to allow shallow compare with React.memo
+// use string instead of array to allow shallow comparison with React.memo
 type CharacterContent = string;
 
 type CharacterProps = {
@@ -19,6 +19,8 @@ const Character = React.memo<CharacterProps>(({ content, lineIdx, columnIdx }) =
   useEffect(() => {
     registerSetCursorDispatch(setCursor, lineIdx, columnIdx);
   }, []);
+
+  console.log(content, lineIdx, columnIdx);
 
   return (
     <div
@@ -49,6 +51,8 @@ type LineProps = {
 };
 
 const CHAR_PER_LINE = 80;
+
+let cursor = 3;
 
 export const Line: React.FC<LineProps> = ({ docId, lineIdx }) => {
   const [characterContent, setCharacterContent] = useState<CharacterContent[]>(
