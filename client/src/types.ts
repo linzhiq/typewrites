@@ -1,6 +1,6 @@
 import { Timestamp } from "firebase/firestore";
 
-export type Player = {
+export type PlayerData = {
   lastAlive: Timestamp;
   cursorLine: number;
   cursorColumn: number;
@@ -12,7 +12,7 @@ type Line = {
 }
 
 type Doc = {
-  players: Record<string, Player>;
+  players: Record<string, PlayerData>;
   lines: Record<`${number}`, Line>
 };
 
