@@ -1,4 +1,4 @@
-import { arrayUnion, doc, updateDoc } from "firebase/firestore";
+import { arrayUnion, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { useEffect } from "react";
 import { CursorManagerMethods, userCursorPosition } from "./cursors";
@@ -13,8 +13,9 @@ export const useKeyboardManager: (
       column: userCursorPosition.column + 1
     });
 
-    await updateDoc(doc(db, "docs", "0", "lines", `0`), {
+    await updateDoc(doc(db, "docs", "0", "lines", `${userCursorPosition.line}`), {
       [`character_${previousCursorPosition.column}`]: arrayUnion(e.key),
+      modificationDate: serverTimestamp()
     });
   };
 

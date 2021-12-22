@@ -1,29 +1,32 @@
 import React, { useEffect, useState } from "react";
 import {
   CursorsForCell,
-  registerSetCursorsDispatch,
-  SetUserCursorPosition,
+  registerSetCursorsDispatch, setUserCursorPosition,
+  SetUserCursorPosition, unregisterSetCursorsDispatch
 } from "../managers/cursors";
-
-// use string instead of array to allow shallow comparison with React.memo
-export type CharacterContent = string;
+import { CharacterContent } from "../managers/documents";
 
 type CharacterProps = {
   lineIdx: number;
   columnIdx: number;
   content: CharacterContent;
-  setUserCursorPosition: SetUserCursorPosition;
 };
 
 export const Character = React.memo<CharacterProps>(
-  ({ content, lineIdx, columnIdx, setUserCursorPosition }) => {
+  ({ content, lineIdx, columnIdx }) => {
     const [cursors, setCursors] = useState<CursorsForCell>({ self: false });
 
     useEffect(() => {
-      registerSetCursorsDispatch(setCursors, {
+      const position = {
         line: lineIdx,
         column: columnIdx,
-      });
+      };
+
+      registerSetCursorsDispatch(setCursors, position);
+
+      return () => {
+        unregisterSetCursorsDispatch(position);
+      }
     }, [setCursors]);
 
     return (

@@ -26,7 +26,7 @@ type SetCursorsDispatch = React.Dispatch<React.SetStateAction<CursorsForCell>>;
 
 /* States */
 let userId: PlayerId;
-export let userCursorPosition: CursorPosition; // TODO: make this singleton stateful
+export let userCursorPosition: CursorPosition; // TODO(lqi): make this singleton stateful
 
 const playerIdsAtPosition: Map<
   CursorPositionSerialized,
@@ -40,7 +40,6 @@ const playerDataById: Map<PlayerId, PlayerData> = new Map<
 >();
 
 /* Position helpers */
-
 const serializePosition = ({
   line,
   column,
@@ -77,6 +76,7 @@ const dispatchSetCursorsForPosition = (position: CursorPositionSerialized) => {
 
 /* Player helpers */
 const onPlayerDataUpdate = (id: string, player: PlayerData) => {
+  // remove previous position of player
   removePlayer(id);
 
   // update with new position
@@ -99,14 +99,14 @@ const removePlayer = (id: string) => {
   }
 };
 
-/* Firestore subscriptions on cursor  */
+/* Firestore subscriptions on cursors  */
 const CURSOR_ALIVE_TIMEOUT = 60 * 60 * 1000; // 1 hour
 const CURSOR_RESUBSCRIBE_INTERVAL = 0.5 * 60 * 1000; // 30 seconds
 
 let unsubscribe: Unsubscribe;
 let intervalId: any;
 
-const setupSubscription = () => {
+const setUpSubscription = () => {
   const updateSubscription = () => {
     if (unsubscribe) {
       unsubscribe();
@@ -161,7 +161,7 @@ export type CursorManagerMethods = {
 
 export const useCursorManager: () => CursorManagerMethods = () => {
   useEffect(() => {
-    setupSubscription();
+    setUpSubscription();
     return () => {
       intervalId && clearInterval(intervalId);
       unsubscribe && unsubscribe();
