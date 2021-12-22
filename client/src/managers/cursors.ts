@@ -61,6 +61,9 @@ export const registerSetCursorsDispatch = (
   position: CursorPosition
 ) => {
   dispatchAtPosition.set(serializePosition(position), dispatch);
+
+  // set the content if dispatch is registered after cursor data load
+  dispatchSetCursorsForPosition(serializePosition(position));
 };
 
 export const unregisterSetCursorsDispatch = (position: CursorPosition) => {
@@ -70,7 +73,7 @@ export const unregisterSetCursorsDispatch = (position: CursorPosition) => {
 const dispatchSetCursorsForPosition = (position: CursorPositionSerialized) => {
   dispatchAtPosition.get(position)?.({
     players: playerIdsAtPosition.get(position),
-    self: serializePosition(userCursorPosition) === position,
+    self: userCursorPosition && serializePosition(userCursorPosition) === position,
   });
 };
 

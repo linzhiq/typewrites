@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 
 import { Character } from "./Character";
 import {
-  CHAR_PER_LINE,
   CharacterContent,
   registerSetLineContentDispatch,
   unregisterSetLineContentDispatch,

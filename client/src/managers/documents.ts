@@ -1,15 +1,29 @@
 import React, { useEffect, useState } from "react";
-import { collection, onSnapshot, query, Unsubscribe } from "firebase/firestore";
+import {
+  arrayUnion,
+  collection,
+  doc,
+  onSnapshot,
+  query,
+  setDoc,
+  serverTimestamp,
+  Unsubscribe,
+  updateDoc,
+} from "firebase/firestore";
 import { db } from "../firebase";
+import { setUserCursorPosition, userCursorPosition } from "./cursors";
 
 /* States */
 const dispatchAtLine: Map<number, SetLineContentDispatch> = new Map<
   number,
   SetLineContentDispatch
 >();
-const contentAtLine: Map<number, LineContent> = new Map<number, LineContent>();
+export const contentAtLine: Map<number, LineContent> = new Map<
+  number,
+  LineContent
+>();
 
-let lineCount: number;
+export let lineCount: number;
 let setLineCount: React.Dispatch<React.SetStateAction<number>>;
 
 /* Dispatch helpers */
@@ -41,6 +55,12 @@ export const registerSetLineContentDispatch = (
   dispatch: SetLineContentDispatch
 ) => {
   dispatchAtLine.set(line, dispatch);
+
+  // set the content if dispatch is registered after content load
+  const prevContent = contentAtLine.get(line);
+  if (prevContent) {
+    dispatch(prevContent);
+  }
 };
 
 export const unregisterSetLineContentDispatch = (line: number) => {
@@ -56,6 +76,20 @@ const onLineContentUpdate = (line: number, lineContent: LineContent) => {
     contentAtLine.set(line, lineContent);
     dispatch(lineContent);
   }
+};
+
+/* Public content helpers */
+export const setCurrentCharacter = (char: string) => {
+  updateDoc(doc(db, "docs", "0", "lines", `${userCursorPosition.line}`), {
+    [`character_${userCursorPosition.column}`]: arrayUnion(char[0]),
+    modificationDate: serverTimestamp(),
+  }).then();
+};
+
+export const addCurrentLine = () => {
+  setDoc(doc(db, "docs", "0", "lines", `${userCursorPosition.line}`), {
+    modificationDate: serverTimestamp(),
+  }).then();
 };
 
 /* Firestore subscriptions on document */
@@ -74,6 +108,15 @@ const setUpSubscription = () => {
         0
       );
       maxLine >= lineCount && setLineCount(maxLine + 1);
+
+      if (!userCursorPosition) {
+        // Create a new line and place the cursor
+        setUserCursorPosition({
+          line: maxLine + 1,
+          column: 0
+        });
+        addCurrentLine();
+      }
 
       for (const doc of snapshot.docs) {
         onLineContentUpdate(
