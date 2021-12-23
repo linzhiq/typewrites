@@ -1,14 +1,20 @@
 import React, { useEffect, useState } from "react";
 import {
+  addDoc,
   onSnapshot,
   collection,
+  documentId,
   query,
+  serverTimestamp,
   where,
+  DocumentReference,
   Unsubscribe,
   Timestamp,
+  updateDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { PlayerData } from "../types";
+import { setInterval } from "timers";
 
 /* Types */
 type PlayerId = string; // doc.players.__name__
@@ -24,9 +30,15 @@ export type CursorPosition = {
 type CursorPositionSerialized = `${number},${number}`;
 type SetCursorsDispatch = React.Dispatch<React.SetStateAction<CursorsForCell>>;
 
-/* States */
-let userId: PlayerId;
-export let userCursorPosition: CursorPosition; // TODO(lqi): make this singleton stateful
+export type SetUserCursorPosition = (position: CursorPosition) => void;
+
+/* States
+  TODO(lqi): avoid singletons
+* */
+let userPlayerReference: DocumentReference | null = null;
+let userPlayerUpdatePendingPromise: Promise<DocumentReference | void> | null =
+  null;
+export let userCursorPosition: CursorPosition;
 
 const playerIdsAtPosition: Map<
   CursorPositionSerialized,
@@ -73,7 +85,8 @@ export const unregisterSetCursorsDispatch = (position: CursorPosition) => {
 const dispatchSetCursorsForPosition = (position: CursorPositionSerialized) => {
   dispatchAtPosition.get(position)?.({
     players: playerIdsAtPosition.get(position),
-    self: userCursorPosition && serializePosition(userCursorPosition) === position,
+    self:
+      userCursorPosition && serializePosition(userCursorPosition) === position,
   });
 };
 
@@ -106,16 +119,16 @@ const removePlayer = (id: string) => {
 const CURSOR_ALIVE_TIMEOUT = 60 * 60 * 1000; // 1 hour
 const CURSOR_RESUBSCRIBE_INTERVAL = 0.5 * 60 * 1000; // 30 seconds
 
-let unsubscribe: Unsubscribe;
-let intervalId: any;
+let playerSubscriptionUnsubscribe: Unsubscribe;
+let playerSubscriptionQueryUpdateIntervalId: any;
 
 const setUpSubscription = () => {
   const updateSubscription = () => {
-    if (unsubscribe) {
-      unsubscribe();
+    if (playerSubscriptionUnsubscribe) {
+      playerSubscriptionUnsubscribe();
     }
 
-    unsubscribe = onSnapshot(
+    playerSubscriptionUnsubscribe = onSnapshot(
       query(
         collection(db, "docs", "0", "players"),
         where(
@@ -129,6 +142,10 @@ const setUpSubscription = () => {
 
         for (const doc of snapshot.docs) {
           const player: PlayerData = doc.data() as any;
+          if (doc.id === userPlayerReference?.id) {
+            // ignore updates on user cursor
+            continue;
+          }
 
           onPlayerDataUpdate(doc.id, player);
           removedPlayerIds.delete(doc.id);
@@ -142,19 +159,65 @@ const setUpSubscription = () => {
   };
 
   updateSubscription();
-  intervalId = setInterval(updateSubscription, CURSOR_RESUBSCRIBE_INTERVAL);
+  playerSubscriptionQueryUpdateIntervalId = setInterval(
+    updateSubscription,
+    CURSOR_RESUBSCRIBE_INTERVAL
+  );
 };
 
 /* User cursor */
-export type SetUserCursorPosition = (position: CursorPosition) => void;
+const USER_CURSOR_HEARTBEAT_INTERVAL = 10 * 1000;
+
+let userCursorHeartbeatIntervalId: any;
 
 export const setUserCursorPosition: SetUserCursorPosition = (position) => {
-  const previousUserPosition = {...userCursorPosition};
+  const previousUserPosition = { ...userCursorPosition };
   userCursorPosition = position;
 
   previousUserPosition &&
     dispatchSetCursorsForPosition(serializePosition(previousUserPosition));
   dispatchSetCursorsForPosition(serializePosition(userCursorPosition));
+
+  // send new userCursorPosition to remote
+  sendUserCursorPositionToRemote();
+};
+
+const sendUserCursorPositionToRemote = () => {
+  if (userPlayerUpdatePendingPromise || !userCursorPosition) {
+    // skip update
+    return;
+  }
+
+  const newUserPosition = { ...userCursorPosition };
+  const data = {
+    lastAlive: serverTimestamp(),
+    cursorLine: newUserPosition.line,
+    cursorColumn: newUserPosition.column,
+  };
+
+  userPlayerUpdatePendingPromise = userPlayerReference
+    ? updateDoc(userPlayerReference, data)
+    : addDoc(collection(db, "docs", "0", "players"), data);
+
+  userPlayerUpdatePendingPromise
+    .then((reference) => {
+      userPlayerUpdatePendingPromise = null;
+
+      if (reference) {
+        userPlayerReference = reference;
+      }
+
+      if (
+        serializePosition(userCursorPosition) !==
+        serializePosition(newUserPosition)
+      ) {
+        // cursor position has updated since document write
+        sendUserCursorPositionToRemote();
+      }
+    })
+    .catch(() => {
+      userPlayerUpdatePendingPromise = null;
+    });
 };
 
 /* Hook */
@@ -164,10 +227,22 @@ export type CursorManagerMethods = {
 
 export const useCursorManager: () => CursorManagerMethods = () => {
   useEffect(() => {
+    // Subscription of other players
     setUpSubscription();
+
+    // Heartbeat of user player
+    userCursorHeartbeatIntervalId = setInterval(
+      sendUserCursorPositionToRemote,
+      USER_CURSOR_HEARTBEAT_INTERVAL
+    );
+
     return () => {
-      intervalId && clearInterval(intervalId);
-      unsubscribe && unsubscribe();
+      playerSubscriptionQueryUpdateIntervalId &&
+        clearInterval(playerSubscriptionQueryUpdateIntervalId);
+      playerSubscriptionUnsubscribe && playerSubscriptionUnsubscribe();
+
+      userCursorHeartbeatIntervalId &&
+        clearInterval(userCursorHeartbeatIntervalId);
     };
   });
 
