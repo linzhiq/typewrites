@@ -50,6 +50,7 @@ const playerDataById: Map<PlayerId, PlayerData> = new Map<
   PlayerId,
   PlayerData
 >();
+const playerCursorColorIdById: Map<PlayerId, number> = new Map<PlayerId, number>();
 
 /* Position helpers */
 const serializePosition = ({
@@ -115,9 +116,19 @@ const removePlayer = (id: string) => {
   }
 };
 
+export const cursorColorIdForPlayerId = (playerId: string): number => {
+  let colorId = playerCursorColorIdById.get(playerId);
+  if (!colorId) {
+    colorId = playerCursorColorIdById.size + 1;
+    playerCursorColorIdById.set(playerId, colorId);
+  }
+
+  return colorId;
+};
+
 /* Firestore subscriptions on cursors  */
-const CURSOR_ALIVE_TIMEOUT = 60 * 60 * 1000; // 1 hour
-const CURSOR_RESUBSCRIBE_INTERVAL = 0.5 * 60 * 1000; // 30 seconds
+const CURSOR_ALIVE_TIMEOUT = 60 * 1000; // 1 minute
+const CURSOR_RESUBSCRIBE_INTERVAL = 20 * 1000; // 20 seconds
 
 let playerSubscriptionUnsubscribe: Unsubscribe;
 let playerSubscriptionQueryUpdateIntervalId: any;
@@ -166,7 +177,7 @@ const setUpSubscription = () => {
 };
 
 /* User cursor */
-const USER_CURSOR_HEARTBEAT_INTERVAL = 10 * 1000;
+const USER_CURSOR_HEARTBEAT_INTERVAL = 30 * 1000;
 
 let userCursorHeartbeatIntervalId: any;
 
