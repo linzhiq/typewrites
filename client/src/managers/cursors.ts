@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import {
   addDoc,
   onSnapshot,
   collection,
-  documentId,
   query,
   serverTimestamp,
   where,
@@ -15,6 +14,10 @@ import {
 import { db } from "../firebase";
 import { PlayerData } from "../types";
 import { setInterval } from "timers";
+
+/* Constants */
+const PLAYER_CURSOR_ALIVE_TIMEOUT = 30 * 1000; // 30 seconds
+const USER_CURSOR_HEARTBEAT_INTERVAL = 20 * 1000; // 20 seconds
 
 /* Types */
 type PlayerId = string; // doc.players.__name__
@@ -50,7 +53,14 @@ const playerDataById: Map<PlayerId, PlayerData> = new Map<
   PlayerId,
   PlayerData
 >();
-const playerCursorColorIdById: Map<PlayerId, number> = new Map<PlayerId, number>();
+const playerCursorColorIdById: Map<PlayerId, number> = new Map<
+  PlayerId,
+  number
+>();
+const playerDeathTimeoutTimeoutIdFromPlayerId: Map<string, number> = new Map<
+  string,
+  number
+>();
 
 /* Position helpers */
 const serializePosition = ({
@@ -105,10 +115,22 @@ const onPlayerDataUpdate = (id: string, player: PlayerData) => {
       (playerIdsAtPosition.get(newPosition) || new Set()).add(id)
     );
     dispatchSetCursorsForPosition(newPosition);
+
+    playerDeathTimeoutTimeoutIdFromPlayerId.set(
+      id,
+      setTimeout(() => {
+        removePlayer(id);
+      }, player.lastAlive.toMillis() + PLAYER_CURSOR_ALIVE_TIMEOUT - Date.now()) as unknown as number
+    ); // does not handle Node-style timeout
   }
 };
 
 const removePlayer = (id: string) => {
+  const timeoutId = playerDeathTimeoutTimeoutIdFromPlayerId.get(id);
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+  }
+
   const prevPosition = serializePositionFromPlayer(playerDataById.get(id));
   if (prevPosition) {
     playerIdsAtPosition.get(prevPosition)?.delete(id);
@@ -127,58 +149,45 @@ export const cursorColorIdForPlayerId = (playerId: string): number => {
 };
 
 /* Firestore subscriptions on cursors  */
-const CURSOR_ALIVE_TIMEOUT = 60 * 1000; // 1 minute
-const CURSOR_RESUBSCRIBE_INTERVAL = 20 * 1000; // 20 seconds
-
 let playerSubscriptionUnsubscribe: Unsubscribe;
-let playerSubscriptionQueryUpdateIntervalId: any;
 
 const setUpSubscription = () => {
-  const updateSubscription = () => {
-    if (playerSubscriptionUnsubscribe) {
-      playerSubscriptionUnsubscribe();
-    }
+  if (playerSubscriptionUnsubscribe) {
+    playerSubscriptionUnsubscribe();
+  }
 
-    playerSubscriptionUnsubscribe = onSnapshot(
-      query(
-        collection(db, "docs", "0", "players"),
-        where(
-          "lastAlive",
-          ">=",
-          Timestamp.fromMillis(Date.now() - CURSOR_ALIVE_TIMEOUT)
-        )
-      ),
-      (snapshot) => {
-        const removedPlayerIds = new Set(playerDataById.keys());
+  playerSubscriptionUnsubscribe = onSnapshot(
+    query(
+      collection(db, "docs", "0", "players"),
+      where("exitedGracefully", "==", false),
+      where(
+        "lastAlive",
+        ">=",
+        Timestamp.fromMillis(Date.now() - PLAYER_CURSOR_ALIVE_TIMEOUT)
+      )
+    ),
+    (snapshot) => {
+      const removedPlayerIds = new Set(playerDataById.keys());
 
-        for (const doc of snapshot.docs) {
-          const player: PlayerData = doc.data() as any;
-          if (doc.id === userPlayerReference?.id) {
-            // ignore updates on user cursor
-            continue;
-          }
-
-          onPlayerDataUpdate(doc.id, player);
-          removedPlayerIds.delete(doc.id);
+      for (const doc of snapshot.docs) {
+        const player: PlayerData = doc.data() as any;
+        if (doc.id === userPlayerReference?.id) {
+          // ignore updates on user cursor
+          continue;
         }
 
-        for (const playerId of removedPlayerIds) {
-          removePlayer(playerId);
-        }
+        onPlayerDataUpdate(doc.id, player);
+        removedPlayerIds.delete(doc.id);
       }
-    );
-  };
 
-  updateSubscription();
-  playerSubscriptionQueryUpdateIntervalId = setInterval(
-    updateSubscription,
-    CURSOR_RESUBSCRIBE_INTERVAL
+      for (const playerId of removedPlayerIds) {
+        removePlayer(playerId);
+      }
+    }
   );
 };
 
 /* User cursor */
-const USER_CURSOR_HEARTBEAT_INTERVAL = 30 * 1000;
-
 let userCursorHeartbeatIntervalId: any;
 
 export const setUserCursorPosition: SetUserCursorPosition = (position) => {
@@ -190,10 +199,10 @@ export const setUserCursorPosition: SetUserCursorPosition = (position) => {
   dispatchSetCursorsForPosition(serializePosition(userCursorPosition));
 
   // send new userCursorPosition to remote
-  sendUserCursorPositionToRemote();
+  userCursorPositionUpdateRemote();
 };
 
-const sendUserCursorPositionToRemote = () => {
+const userCursorPositionUpdateRemote = () => {
   if (userPlayerUpdatePendingPromise || !userCursorPosition) {
     // skip update
     return;
@@ -202,6 +211,7 @@ const sendUserCursorPositionToRemote = () => {
   const newUserPosition = { ...userCursorPosition };
   const data = {
     lastAlive: serverTimestamp(),
+    exitedGracefully: false,
     cursorLine: newUserPosition.line,
     cursorColumn: newUserPosition.column,
   };
@@ -223,7 +233,7 @@ const sendUserCursorPositionToRemote = () => {
         serializePosition(newUserPosition)
       ) {
         // cursor position has updated since document write
-        sendUserCursorPositionToRemote();
+        userCursorPositionUpdateRemote();
       }
     })
     .catch(() => {
@@ -231,9 +241,21 @@ const sendUserCursorPositionToRemote = () => {
     });
 };
 
+const userCursorPositionGracefulExit = async () => {
+  // Depending on the browser, this may or may not be called
+  userPlayerReference &&
+    (await updateDoc(userPlayerReference, {
+      exitedGracefully: true,
+    }));
+};
+
 /* Hook */
 export type CursorManagerMethods = {
   setUserCursorPosition: SetUserCursorPosition;
+};
+
+const beforeUnloadEventHandler = async (e: BeforeUnloadEvent) => {
+  await userCursorPositionGracefulExit();
 };
 
 export const useCursorManager: () => CursorManagerMethods = () => {
@@ -243,17 +265,19 @@ export const useCursorManager: () => CursorManagerMethods = () => {
 
     // Heartbeat of user player
     userCursorHeartbeatIntervalId = setInterval(
-      sendUserCursorPositionToRemote,
+      userCursorPositionUpdateRemote,
       USER_CURSOR_HEARTBEAT_INTERVAL
     );
+    window.addEventListener("beforeunload", beforeUnloadEventHandler);
 
     return () => {
-      playerSubscriptionQueryUpdateIntervalId &&
-        clearInterval(playerSubscriptionQueryUpdateIntervalId);
+      userCursorPositionGracefulExit().then();
+
       playerSubscriptionUnsubscribe && playerSubscriptionUnsubscribe();
 
       userCursorHeartbeatIntervalId &&
         clearInterval(userCursorHeartbeatIntervalId);
+      window.removeEventListener("beforeunload", beforeUnloadEventHandler);
     };
   });
 
