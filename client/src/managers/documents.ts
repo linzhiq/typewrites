@@ -103,10 +103,7 @@ const setUpSubscription = () => {
     query(collection(db, "docs", "0", "lines")),
     (snapshot) => {
       // Render more lines as they are added
-      const maxLine = snapshot.docs.reduce(
-        (prev, doc) => Math.max(parseInt(doc.id)),
-        0
-      );
+      const maxLine = Math.max(...snapshot.docs.map(doc => parseInt(doc.id)));
       maxLine >= lineCount && setLineCount(maxLine + 1);
 
       if (!userCursorPosition) {
