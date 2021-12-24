@@ -9,7 +9,7 @@ import { addCurrentLine, CHAR_PER_LINE, contentAtLine, lineCount, setCurrentChar
 const moveCursor = (
   direction: "left" | "right" | "up" | "down",
   instruction: "jumpOne" | "jumpWord" | "jumpLine",
-  createNewLine?: boolean
+  newLine?: boolean
 ) => {
   if (
     instruction === "jumpLine" &&
@@ -83,7 +83,7 @@ const moveCursor = (
         break;
       case "down":
         if (userCursorPosition.line + 1 === lineCount) {
-          if (createNewLine) {
+          if (newLine) {
             setUserCursorPosition({
               line: userCursorPosition.line + 1,
               column: 0,
@@ -95,7 +95,7 @@ const moveCursor = (
         } else {
           setUserCursorPosition({
             line: userCursorPosition.line + 1,
-            column: userCursorPosition.column,
+            column: newLine? 0: userCursorPosition.column,
           });
         }
         break;

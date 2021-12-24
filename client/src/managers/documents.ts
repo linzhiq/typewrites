@@ -87,6 +87,10 @@ export const setCurrentCharacter = (char: string) => {
 };
 
 export const addCurrentLine = () => {
+  if (!userCursorPosition) {
+    return;
+  }
+
   setDoc(doc(db, "docs", "0", "lines", `${userCursorPosition.line}`), {
     modificationDate: serverTimestamp(),
   }).then();
