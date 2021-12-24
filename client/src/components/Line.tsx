@@ -21,7 +21,7 @@ export const Line: React.FC<LineProps> = ({ lineIdx }) => {
     return () => {
       unregisterSetLineContentDispatch(lineIdx);
     };
-  });
+  }, [lineIdx]);
 
   return (
     <div className="line" key={`${lineIdx}`}>

@@ -4,7 +4,6 @@ import {
   CursorsForCell,
   registerSetCursorsDispatch,
   setUserCursorPosition,
-  SetUserCursorPosition,
   unregisterSetCursorsDispatch
 } from "../managers/cursors";
 import { CharacterContent } from "../managers/documents";
@@ -35,7 +34,7 @@ export const Character = React.memo<CharacterProps>(
       return () => {
         unregisterSetCursorsDispatch(position);
       };
-    }, [setCursors]);
+    }, [setCursors, columnIdx, lineIdx]);
 
     return (
       <div

@@ -33,7 +33,7 @@ export type CursorPosition = {
 type CursorPositionSerialized = `${number},${number}`;
 type SetCursorsDispatch = React.Dispatch<React.SetStateAction<CursorsForCell>>;
 
-export type SetUserCursorPosition = (position: CursorPosition) => void;
+type SetUserCursorPosition = (position: CursorPosition) => void;
 
 /* States
   TODO(lqi): avoid singletons
